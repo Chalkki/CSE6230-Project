@@ -2,7 +2,7 @@ import taichi as ti
 
 ti.init(arch=ti.gpu)
 
-N = 100
+N = 10000
 length_bound = 100
 centering_factor = 0.01
 repulsion_factor = 0.05
