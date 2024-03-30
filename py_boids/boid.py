@@ -3,8 +3,15 @@ import taichi as ti
 ti.init(arch=ti.gpu)
 
 N = 100
-boundary_lines = 12 
+length_bound = 100
+centering_factor = 0.01
+repulsion_factor = 0.05
+matching_factor = 0.3
+speed_limit = 5.0
+perception_radius = 40.0
+avoidance_radius = 5.0
 
+boundary_lines = 12 
 
 
 particles_pos = ti.Vector.field(3, dtype=ti.f32, shape=N)
@@ -19,21 +26,99 @@ camera_move_speed = window_x / length_bound * 0.1
 
 @ti.kernel
 def init_particles():
-
     for i in range(N):
         particles_pos[i] = ti.Vector([ti.random() * length_bound for _ in range(3)])
-        particles_vel[i] = ti.Vector([ti.random() * 2 - 1 for _ in range(3)]) * 0.1
+        particles_vel[i] = ti.Vector([ti.random() * 2 - 1 for _ in range(3)]) * speed_limit
+
+@ti.func
+def limit_velocity(velocity):
+    result_velocity = velocity  # Default to the original velocity
+    if velocity.norm() > speed_limit:
+        result_velocity = velocity.normalized() * speed_limit
+    return result_velocity
+
+@ti.func
+def avoid_other_boids(i):
+    repulsion = ti.Vector([0.0, 0.0, 0.0])
+    for j in range(N):
+        if i != j:
+            distance = (particles_pos[i] - particles_pos[j]).norm()
+            if distance < avoidance_radius:  # Avoidance radius
+                repulsion += (particles_pos[i] - particles_pos[j]) / distance
+    return repulsion * repulsion_factor
+
+@ti.func
+def align_velocity(i):
+    average_vel = ti.Vector([0.0, 0.0, 0.0])
+    count = 0
+    for j in range(N):
+        if i != j:
+            average_vel += particles_vel[j]
+            count += 1
+    if count > 0:
+        average_vel /= count
+    return (average_vel - particles_vel[i]) * matching_factor
+
+
+@ti.func
+def find_flock_center(i):
+    center = ti.Vector([0.0, 0.0, 0.0])
+    count = 0
+    for j in range(N):
+        if i != j:
+            distance = (particles_pos[j] - particles_pos[i]).norm()
+            if distance < perception_radius:
+                center += particles_pos[j]
+                count += 1
+            # center += particles_pos[j]
+            # count += 1
+    if count > 0:
+        center /= count
+    return (center - particles_pos[i]) * centering_factor
 
 @ti.kernel
 def update_particles():
     for i in range(N):
-        particles_pos[i] += particles_vel[i]
+        center_offset = find_flock_center(i)
+        avoidance_offset = avoid_other_boids(i)
+        alignment_offset = align_velocity(i)
+        
+        velocity = particles_vel[i] + center_offset + avoidance_offset + alignment_offset
+        velocity = limit_velocity(velocity)
+        
+        particles_pos[i] += velocity * 0.1  # Assuming 0.1 as a time step equivalent
+        particles_vel[i] = velocity
         
         for j in ti.static(range(3)):  
             if particles_pos[i][j] < 0:
                 particles_pos[i][j] += length_bound  
             elif particles_pos[i][j] > length_bound:
                 particles_pos[i][j] -= length_bound  
+        
+        
+# @ti.kernel
+# def update_particles():
+#     temp_pos = ti.Vector.field(3, dtype=ti.f32, shape=N)
+#     temp_vel = ti.Vector.field(3, dtype=ti.f32, shape=N)
+    
+#     for i in range(N):
+#         center_offset = find_flock_center(i)
+#         avoidance_offset = avoid_other_boids(i)
+#         alignment_offset = align_velocity(i)
+#         velocity = particles_vel[i] + center_offset + avoidance_offset + alignment_offset
+        
+#         # Limit the velocity to a maximum speed
+#         if velocity.norm() > speed_limit:
+#             velocity = velocity.normalized() * speed_limit
+        
+#         temp_vel[i] = velocity
+#         temp_pos[i] = particles_pos[i] + temp_vel[i] * 0.1  # Assuming 0.1 as a time step equivalent
+        
+#         for j in ti.static(range(3)):  
+#             if particles_pos[i][j] < 0:
+#                 particles_pos[i][j] += length_bound  
+#             elif particles_pos[i][j] > length_bound:
+#                 particles_pos[i][j] -= length_bound  
 
 
 def draw_bounds(x_min=0, y_min=0, z_min=0, x_max=1, y_max=1, z_max=1):
@@ -51,6 +136,10 @@ def draw_bounds(x_min=0, y_min=0, z_min=0, x_max=1, y_max=1, z_max=1):
     for i, val in enumerate([0, 1, 0, 2, 1, 3, 2, 3, 4, 5, 4, 6, 5, 7, 6, 7, 0, 4, 1, 5, 2, 6, 3, 7]):
         box_lines_indices[i] = val
     return box_anchors, box_lines_indices
+
+
+
+
         
 init_particles()
 
