@@ -180,7 +180,7 @@ def updateVelScatteredSearch():
 
 
 
-def sort_keys():
+def sort_keys_scattered():
     particleArrayIndices_np = particleArrayIndices.to_numpy()
     particleGridIndices_np = particleGridIndices.to_numpy()
 
@@ -193,15 +193,39 @@ def sort_keys():
     particleArrayIndices.from_numpy(sorted_particleArrayIndices)
     particleGridIndices.from_numpy(sorted_particleGridIndices)
 
+def sort_keys_coherent():
+    particleArrayIndices_np = particleArrayIndices.to_numpy()
+    particleGridIndices_np = particleGridIndices.to_numpy()
+    particlesPos_np = particles_pos.to_numpy()
+    particlesVel_np = particles_vel.to_numpy()
+    # Get the indices that would sort the particleGridIndices array.
+    sorted_indices = np.argsort(particleGridIndices_np)
+
+    # Use the sorted indices to reorder the arrays.
+    sorted_particleGridIndices = particleGridIndices_np[sorted_indices]
+    sorted_particleArrayIndices = particleArrayIndices_np[sorted_indices]
+    sorted_particlesPos = particlesPos_np[sorted_indices]
+    sorted_particlesVel = particlesVel_np[sorted_indices]
+    particleArrayIndices.from_numpy(sorted_particleArrayIndices)
+    particleGridIndices.from_numpy(sorted_particleGridIndices)
+    particles_pos.from_numpy(sorted_particlesPos)
+    particles_vel.from_numpy(sorted_particlesVel)
+
 def stepSimulationScatteredGrid():
     ComputeIndices()
-    #ti.algorithms.parallel_sort(particleGridIndices, particleArrayIndices)
-    sort_keys()
+    sort_keys_scattered()
     resetIntBuffer()
     IdentifyCellStartEnd()
     updateVelScatteredSearch()
     kernUpdatePos()
 
+def stepSimulationCoherentGrid():
+    ComputeIndices()
+    sort_keys_coherent()
+    resetIntBuffer()
+    IdentifyCellStartEnd()
+    updateVelScatteredSearch()
+    kernUpdatePos()
 
 @ti.func
 def limit_velocity(velocity):
@@ -315,6 +339,7 @@ def draw_bounds(x_min=0, y_min=0, z_min=0, x_max=1, y_max=1, z_max=1):
 
 
 SetScatteredGrid = 0
+SetCoherentGrid = 1
 init_particles()
 
 # Create a window for rendering
@@ -336,6 +361,8 @@ while window.running:
     scene.set_camera(camera)
     if SetScatteredGrid == 1:
         stepSimulationScatteredGrid()
+    elif SetCoherentGrid == 1:
+        stepSimulationCoherentGrid()
     else:
         update_particles()
 
