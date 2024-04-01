@@ -3,13 +3,13 @@ import taichi as ti
 ti.init(arch=ti.gpu)
 
 N = 10000
-length_bound = 100
-centering_factor = 0.01
-repulsion_factor = 0.1
+length_bound = 5000
+centering_factor = 0.1
+repulsion_factor = 0.03
 matching_factor = 0.1
-speed_limit = 1.0
-perception_radius = 5.0
-avoidance_radius = 3.0
+speed_limit = 5.0
+perception_radius = 7.0
+avoidance_radius =2.0
 
 boundary_lines = 12 
 
@@ -146,7 +146,7 @@ def updateVelScatteredSearch():
         if cur_cell_index_3D[2] + 1 < gridSideCount:
             check_pos[2] = 1
         else:
-            check_pos[2] = 0
+            check_pos[2] = 0    
         for z in range(cur_cell_index_3D[2] - check_neg[2], cur_cell_index_3D[2]+check_pos[2]+1):
             for y in range(cur_cell_index_3D[1] - check_neg[1], cur_cell_index_3D[1] + check_pos[1] + 1):
                 for x in range(cur_cell_index_3D[0] - check_neg[0], cur_cell_index_3D[0] + check_pos[0] + 1):
@@ -336,7 +336,7 @@ def draw_bounds(x_min=0, y_min=0, z_min=0, x_max=1, y_max=1, z_max=1):
 
 
 
-SetScatteredGrid = 1
+SetScatteredGrid = 0
 init_particles()
 
 # Create a window for rendering
@@ -365,7 +365,7 @@ while window.running:
     # scene.point_light(pos=(0, 10, -10), color=(1, 1, 1)) 
 
     # Render particles
-    scene.particles(particles_pos, radius=0.5, color=(0.4, 0.6, 0.9))
+    scene.particles(particles_pos, radius=0.1, color=(0.4, 0.6, 0.9))
     scene.lines(box_anchors, indices=box_lines_indices, color = (0.99, 0.99, 0.01), width = 2.0)
     
     
