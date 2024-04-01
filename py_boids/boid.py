@@ -2,7 +2,7 @@ import taichi as ti
 import numpy as np
 ti.init(arch=ti.gpu)
 
-N = 30000
+N = 10000
 length_bound = 100
 centering_factor = 0.1
 repulsion_factor = 0.03
@@ -217,7 +217,7 @@ def avoid_other_boids(i):
         if i != j:
             distance = (particles_pos[i] - particles_pos[j]).norm()
             if distance < avoidance_radius:  # Avoidance radius
-                repulsion += (particles_pos[i] - particles_pos[j]) / distance
+                repulsion -= (particles_pos[j] - particles_pos[i])
     return repulsion * repulsion_factor
 
 @ti.func
@@ -232,7 +232,7 @@ def align_velocity(i):
                 count += 1
     if count > 0:
         average_vel /= count
-    return (average_vel - particles_vel[i]) * matching_factor
+    return average_vel* matching_factor
 
 
 @ti.func
@@ -314,7 +314,7 @@ def draw_bounds(x_min=0, y_min=0, z_min=0, x_max=1, y_max=1, z_max=1):
 
 
 
-SetScatteredGrid = 1
+SetScatteredGrid = 0
 init_particles()
 
 # Create a window for rendering
