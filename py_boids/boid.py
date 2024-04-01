@@ -1,9 +1,9 @@
 import taichi as ti
-
+import numpy as np
 ti.init(arch=ti.gpu)
 
-N = 10000
-length_bound = 5000
+N = 30000
+length_bound = 100
 centering_factor = 0.1
 repulsion_factor = 0.03
 matching_factor = 0.1
@@ -180,45 +180,23 @@ def updateVelScatteredSearch():
 
 
 
-@ti.kernel
 def sort_keys():
-    # Radix Sort
-    max_value = 0
-    for i in range(N):
-        max_value = max(max_value, particleGridIndices[i])
+    particleArrayIndices_np = particleArrayIndices.to_numpy()
+    particleGridIndices_np = particleGridIndices.to_numpy()
 
-    exp = 1
-    while max_value // exp > 0:
-        # Counting Sort
-        count = ti.field(ti.i32, shape=10)
-        output = ti.field(ti.i32, shape=N)
+    # Get the indices that would sort the particleGridIndices array.
+    sorted_indices = np.argsort(particleGridIndices_np)
 
-        for i in range(10):
-            count[i] = 0
-
-        for i in range(N):
-            index = particleGridIndices[i] // exp % 10
-            count[index] += 1
-
-        for i in range(1, 10):
-            count[i] += count[i - 1]
-
-        i = N - 1
-        while i >= 0:
-            index = particleGridIndices[i] // exp % 10
-            output[count[index] - 1] = particleGridIndices[i]
-            count[index] -= 1
-            i -= 1
-
-        for i in range(N):
-            particleGridIndices[i] = output[i]
-
-        exp *= 10
+    # Use the sorted indices to reorder the arrays.
+    sorted_particleGridIndices = particleGridIndices_np[sorted_indices]
+    sorted_particleArrayIndices = particleArrayIndices_np[sorted_indices]
+    particleArrayIndices.from_numpy(sorted_particleArrayIndices)
+    particleGridIndices.from_numpy(sorted_particleGridIndices)
 
 def stepSimulationScatteredGrid():
     ComputeIndices()
-    ti.algorithms.parallel_sort(particleGridIndices, particleArrayIndices)
-    #sort_keys()
+    #ti.algorithms.parallel_sort(particleGridIndices, particleArrayIndices)
+    sort_keys()
     resetIntBuffer()
     IdentifyCellStartEnd()
     updateVelScatteredSearch()
@@ -336,7 +314,7 @@ def draw_bounds(x_min=0, y_min=0, z_min=0, x_max=1, y_max=1, z_max=1):
 
 
 
-SetScatteredGrid = 0
+SetScatteredGrid = 1
 init_particles()
 
 # Create a window for rendering
