@@ -371,7 +371,7 @@ SetCoherentGrid = 1
 init_particles()
 
 # Create a window for rendering
-window = ti.ui.Window("3D Moving Particles", (window_x, windows_y))
+window = ti.ui.Window("CSE6230 3D Boids Simulation", (window_x, windows_y))
 canvas = window.get_canvas()
 scene = window.get_scene()
 camera = ti.ui.Camera()
