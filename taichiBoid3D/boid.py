@@ -368,6 +368,7 @@ def draw_bounds(x_min=0, y_min=0, z_min=0, x_max=1, y_max=1, z_max=1):
 
 SetScatteredGrid = 0
 SetCoherentGrid = 1
+SetPrefixSum = 0
 init_particles()
 
 # Create a window for rendering
@@ -388,10 +389,11 @@ while window.running:
     camera.track_user_inputs(window, movement_speed=camera_move_speed, hold_key=ti.ui.RMB)
     scene.set_camera(camera)
     if SetScatteredGrid == 1:
-        # stepSimulationScatteredGrid()
-        prefixSumApproach()
+        stepSimulationScatteredGrid()
     elif SetCoherentGrid == 1:
         stepSimulationCoherentGrid()
+    elif SetPrefixSum == 1:
+        prefixSumApproach()
     else:
         update_particles()
 
