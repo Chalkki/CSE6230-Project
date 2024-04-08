@@ -11,11 +11,11 @@
 #define dt       0.2
 
 #define centering_factor 0.1
-#define epulsion_factor = 0.03
-#define matching_factor = 0.1
-#define speed_limit = 5.0
-#define perception_radius = 7.0
-#define avoidance_radius = 2.0
+#define epulsion_factor 0.03
+#define matching_factor 0.1
+#define speed_limit 5.0
+#define perception_radius 7.0
+#define avoidance_radius 2.0
 
 
 

@@ -70,21 +70,21 @@ __global__ void move_gpu_pos(particle_t* particles, int num_parts, double size) 
     p->y += p->vy * dt;
     p->z += p->vz * dt;
 
-    //
-    //  bounce from walls
-    //
-    while (p->x < 0 || p->x > size) {
-        p->x = p->x < 0 ? -(p->x) : 2 * size - p->x;
-        p->vx = -(p->vx);
-    }
-    while (p->y < 0 || p->y > size) {
-        p->y = p->y < 0 ? -(p->y) : 2 * size - p->y;
-        p->vy = -(p->vy);
-    }
-    while(p->z < 0 || p->z > size){
-        p->z = p->z < 0 ? -(p->z) : 2 * size - p->z;
-        p->vz = -(p->vz);
-    }
+    // //
+    // //  bounce from walls
+    // //
+    // while (p->x < 0 || p->x > size) {
+    //     p->x = p->x < 0 ? -(p->x) : 2 * size - p->x;
+    //     p->vx = -(p->vx);
+    // }
+    // while (p->y < 0 || p->y > size) {
+    //     p->y = p->y < 0 ? -(p->y) : 2 * size - p->y;
+    //     p->vy = -(p->vy);
+    // }
+    // while(p->z < 0 || p->z > size){
+    //     p->z = p->z < 0 ? -(p->z) : 2 * size - p->z;
+    //     p->vz = -(p->vz);
+    // }
 }
 
 void init_simulation(int num_parts) {
