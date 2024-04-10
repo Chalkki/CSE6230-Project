@@ -3,13 +3,14 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
-
 #include <cuda.h>
-#include <fstream>
 #include <iostream>
 #include <random>
 #include <vector>
-
+#include <thrust/device_vector.h>
+#include <thrust/host_vector.h>
+#include <thrust/sort.h>
+#include <thrust/random.h>
 // toggles for UNIFORM_GRID and COHERENT_GRID
 #define NUM_THREADS 256
 // change this to adjust particle count in the simulation
@@ -36,7 +37,7 @@ __host__ __device__ Vec3 generateRandomVec3(float time, int index) {
 
 // CUDA kernel for generating boids with a specified mass randomly around the star.
 
-__global__ void kernGenerateRandomPosArray(int time, int N, Vec3* arr, float scale) {
+__global__ void kernGenerateRandomPosArray(int time, int N, Vec3* arr) {
 	int index = (blockIdx.x * blockDim.x) + threadIdx.x;
 	if (index < N) {
 		Vec3 rand = generateRandomVec3(time, index);
@@ -82,18 +83,17 @@ int main(int argc, char* argv[]) {
     int method = find_int_arg(argc, argv, "-m", 1);
     int save = find_int_arg(argc, argv, "-s", 0);
     int  fullBlocksPerGrid = ((num_parts+NUM_THREADS-1)/ NUM_THREADS);
-    Vec3 host_pos * = new Vec3[num_parts];
-    Vec3 gpu_pos *;
+    Vec3* host_pos = new Vec3[num_parts];
+    Vec3* gpu_pos ;
     cudaMalloc((void**)&gpu_pos, num_parts * sizeof(Vec3));
-    kernGenerateRandomPosArray << <fullBlocksPerGrid, blockSize >> > (1, num_parts,
-		gpu_pos, scene_scale);
+    kernGenerateRandomPosArray <<<fullBlocksPerGrid, NUM_THREADS >> > (1, num_parts, gpu_pos);
     // Initialize Simulation
     init_simulation(gpu_pos, num_parts);
 
     auto start_time = std::chrono::steady_clock::now();
 
       for (int step = 0; step < nsteps; ++step) {
-          runCUDA(method);
+          runCUDA(gpu_pos, num_parts, method);
           cudaDeviceSynchronize();
         // Save state if necessary
         if(save == 1){

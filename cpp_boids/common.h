@@ -21,8 +21,10 @@ struct Vec3 {
     float x;
     float y;
     float z;
-    
-    Vec3(float x_val, float y_val, float z_val): x(x_val),y(y_val),z(z_val){}
+
+     __host__ __device__ Vec3():x(0),y(0),z(0){}
+
+     __host__ __device__ Vec3(float x_val, float y_val, float z_val): x(x_val),y(y_val),z(z_val){}
 
     __device__ void operator+=(const Vec3& other) {
         x += other.x;
@@ -66,7 +68,7 @@ __device__ inline Vec3 operator*(const Vec3& a, float b) {
 
 // Simulation routine
 void init_simulation(Vec3 * pos, int num_parts);
-void simulate_one_step(Vec3 * pos, int num_parts);
+void simulate_one_step_naive(Vec3 * pos, int num_parts);
 void stepSimulationCoherentGrid(Vec3 * pos, int num_parts);
 void stepSimulationScatteredGrid(Vec3 * pos, int num_parts);
 void clear_simulation();
