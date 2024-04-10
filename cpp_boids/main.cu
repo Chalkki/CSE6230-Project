@@ -7,9 +7,6 @@
 #include <iostream>
 #include <random>
 #include <vector>
-#include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
-#include <thrust/sort.h>
 #include <thrust/random.h>
 // toggles for UNIFORM_GRID and COHERENT_GRID
 #define NUM_THREADS 256
@@ -77,6 +74,20 @@ void runCUDA(Vec3* pos, int num_parts, int i) {
   }
 }
 
+
+void save_boid_data( const Vec3* pos, int num_parts, const std::string& path) {
+    happly::PLYData plyOut;
+    std::vector<std::array<double, 3>> points;
+
+    for (int i = 0; i < num_parts; ++i) {
+      const Vec3& p = pos[i];
+      points.push_back({p.x, p.y, p.z});
+    }
+    plyOut.addVertexPositions(points);
+
+    plyOut.write(path, happly::DataFormat::ASCII);
+}
+
 int main(int argc, char* argv[]) {
     // Initialize Particles
     int num_parts = find_int_arg(argc, argv, "-n", N_FOR_VIS);
@@ -89,15 +100,17 @@ int main(int argc, char* argv[]) {
     kernGenerateRandomPosArray <<<fullBlocksPerGrid, NUM_THREADS >> > (1, num_parts, gpu_pos);
     // Initialize Simulation
     init_simulation(gpu_pos, num_parts);
-
+    std::string prefix = "../boid_ply_data/";
     auto start_time = std::chrono::steady_clock::now();
-
+      int frame = 0;
       for (int step = 0; step < nsteps; ++step) {
           runCUDA(gpu_pos, num_parts, method);
           cudaDeviceSynchronize();
         // Save state if necessary
-        if(save == 1){
+        if(save == 1 && (step % savefreq == 0|| step == nsteps-1)){
           cudaMemcpy(host_pos, gpu_pos, num_parts * sizeof(Vec3), cudaMemcpyDeviceToHost);
+          save_boid_data(host_pos, num_parts,prefix+ std::to_string(frame)+".p;ly");
+          frame++;
         }
     }
 

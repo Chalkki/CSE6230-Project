@@ -1,6 +1,9 @@
 #include "common.h"
 #include <cuda.h>
-
+#include <thrust/sort.h>
+#include <thrust/execution_policy.h>
+#include <thrust/random.h>
+#include <thrust/device_vector.h>
 #define NUM_THREADS 256
 
 ///
@@ -150,7 +153,7 @@ void init_simulation(Vec3 * pos, int num_parts) {
     cudaMalloc((void**)&dev_particleGridIndices, num_parts * sizeof(int));
     cudaMalloc((void**)&dev_gridCellStartIndices, gridCellCount * sizeof(int));
     cudaMalloc((void**)&dev_gridCellEndIndices, gridCellCount * sizeof(int));
-    cudaMalloc((void**)&dev_pos2, N * sizeof(Vec3));
+    cudaMalloc((void**)&dev_pos2, num_parts * sizeof(Vec3));
     cudaDeviceSynchronize();
         
 }
@@ -161,7 +164,7 @@ __device__ int gridtid3Dto1D(int x, int y, int z, int gridResolution) {
 
 void simulate_one_step_naive(Vec3 * pos, int num_parts) {
     kernUpdateVelocityBruteForce <<<blks, NUM_THREADS >>>(num_parts, pos, dev_vel1, dev_vel2);
-    move_gpu_pos<<<blks, NUM_THREADS>>>(num_parts, dev_pos, dev_vel2);
+    move_gpu_pos<<<blks, NUM_THREADS>>>(num_parts, pos, dev_vel2);
     // ping-pong the velocity buffers
     Vec3* temp = dev_vel2;
     dev_vel2 = dev_vel1;

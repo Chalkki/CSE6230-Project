@@ -55,12 +55,24 @@ __device__ inline Vec3 normalize(const Vec3& a) {
     return {a.x / mag, a.y / mag, a.z / mag};
 }
 
+__device__ inline Vec3 operator+(const Vec3& a, const Vec3& b) {
+    return {a.x + b.x, a.y + b.y, a.z + b.z};
+}
+
 __device__ inline Vec3 operator-(const Vec3& a, const Vec3& b) {
     return {a.x - b.x, a.y - b.y, a.z - b.z};
 }
 
+__device__ inline Vec3 operator*(float a, const Vec3& b) {
+    return {b.x * a, b.y * a, b.z * a};
+}
+
 __device__ inline Vec3 operator*(const Vec3& a, float b) {
     return {a.x * b, a.y * b, a.z * b};
+}
+
+__device__ inline Vec3 operator/(const Vec3& a, float b) {
+    return {a.x / b, a.y / b, a.z / b};
 }
 
 
