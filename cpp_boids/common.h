@@ -1,45 +1,74 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
+#include <cstdint>
+#include <cmath>
 // Program Constants
 #define nsteps   1000
 #define savefreq 10
-#define density  0.0005
-#define mass     0.01
-#define cutoff   0.01
-#define min_r    (cutoff / 100)
-#define dt       0.2
-
-#define centering_factor 0.1
-#define epulsion_factor 0.03
-#define matching_factor 0.1
-#define speed_limit 5.0
-#define perception_radius 7.0
-#define avoidance_radius 2.0
+#define dt       0.2f
+#define scale 100
+#define centering_factor 0.01f
+#define repulsion_factor 0.1f
+#define matching_factor 0.1f
+#define speed_limit 1.0f
+#define perception_radius 5.0f
+#define avoidance_radius 3.0f
 
 
 
-typedef struct vec3{
-    double x;
-    double y;
-    double z;
+struct Vec3 {
+    float x;
+    float y;
+    float z;
+    
+    Vec3(float x_val, float y_val, float z_val): x(x_val),y(y_val),z(z_val){}
 
-    vec3(double x, double y, double z){
-        this->x = x; 
-        this->y = y;
-        this->z = z;
+    __device__ void operator+=(const Vec3& other) {
+        x += other.x;
+        y += other.y;
+        z += other.z;
     }
 
-}vec3;
+    __device__ void operator-=(const Vec3& other) {
+        x -= other.x;
+        y -= other.y;
+        z -= other.z;
+    }
+};
+
+__device__ inline float dot(const Vec3& a, const Vec3& b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+
+__device__ inline float normSquared(const Vec3& r) {
+    return r.x * r.x + r.y * r.y + r.z * r.z;
+}
+
+__device__ inline float norm(const Vec3& r) {
+    return sqrt(r.x * r.x + r.y * r.y + r.z * r.z);
+}
+__device__ inline Vec3 normalize(const Vec3& a) {
+    float mag = norm(a);
+    return {a.x / mag, a.y / mag, a.z / mag};
+}
+
+__device__ inline Vec3 operator-(const Vec3& a, const Vec3& b) {
+    return {a.x - b.x, a.y - b.y, a.z - b.z};
+}
+
+__device__ inline Vec3 operator*(const Vec3& a, float b) {
+    return {a.x * b, a.y * b, a.z * b};
+}
 
 
 
 
 // Simulation routine
-void init_simulation();
-void simulate_one_step(float dt);
-void stepSimulationCoherentGrid(float dt);
-void stepSimulationScatteredGrid(float dt);
+void init_simulation(Vec3 * pos, int num_parts);
+void simulate_one_step(Vec3 * pos, int num_parts);
+void stepSimulationCoherentGrid(Vec3 * pos, int num_parts);
+void stepSimulationScatteredGrid(Vec3 * pos, int num_parts);
 void clear_simulation();
 
 #endif
