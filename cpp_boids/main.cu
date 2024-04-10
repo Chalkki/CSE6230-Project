@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
         // Save state if necessary
         if(save == 1 && (step % savefreq == 0|| step == nsteps-1)){
           cudaMemcpy(host_pos, gpu_pos, num_parts * sizeof(Vec3), cudaMemcpyDeviceToHost);
-          save_boid_data(host_pos, num_parts,prefix+ std::to_string(frame)+".p;ly");
+          save_boid_data(host_pos, num_parts,prefix+ std::to_string(frame)+".ply");
           frame++;
         }
     }
