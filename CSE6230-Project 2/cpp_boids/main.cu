@@ -7,14 +7,13 @@
 #include <iostream>
 #include <random>
 #include <vector>
-#include <thrust/device_vector.h>
-#include <thrust/host_vector.h>
-#include <thrust/sort.h>
 #include <thrust/random.h>
 // toggles for UNIFORM_GRID and COHERENT_GRID
 #define NUM_THREADS 256
 // change this to adjust particle count in the simulation
 const int N_FOR_VIS = 5000;
+
+std::string _method;
 
 __host__ __device__ unsigned int hash(unsigned int a) {
 	a = (a + 0x7ed55d16) + (a << 12);
@@ -70,11 +69,28 @@ int find_int_arg(int argc, char** argv, const char* option, int default_value) {
 void runCUDA(Vec3* pos, int num_parts, int i) {
   if(i == 1){
     simulate_one_step_naive(pos, num_parts);
+    _method = "naive";
   }else if(i==2){
-    stepSimulationScatteredGrid(pos, num_parts);
+    //stepSimulationScatteredGrid(pos, num_parts);
+    _method = "scatteredGrid";
   }else if(i==3){
     stepSimulationCoherentGrid(pos, num_parts);
+    _method = "coherentGrid";
   }
+}
+
+
+void save_boid_data( const Vec3* pos, int num_parts, const std::string& path) {
+    happly::PLYData plyOut;
+    std::vector<std::array<double, 3>> points;
+
+    for (int i = 0; i < num_parts; ++i) {
+      const Vec3& p = pos[i];
+      points.push_back({p.x, p.y, p.z});
+    }
+    plyOut.addVertexPositions(points);
+
+    plyOut.write(path, happly::DataFormat::ASCII);
 }
 
 int main(int argc, char* argv[]) {
@@ -89,15 +105,17 @@ int main(int argc, char* argv[]) {
     kernGenerateRandomPosArray <<<fullBlocksPerGrid, NUM_THREADS >> > (1, num_parts, gpu_pos);
     // Initialize Simulation
     init_simulation(gpu_pos, num_parts);
-
+    std::string prefix = "../boid_ply_data/";
     auto start_time = std::chrono::steady_clock::now();
-
+      int frame = 0;
       for (int step = 0; step < nsteps; ++step) {
           runCUDA(gpu_pos, num_parts, method);
           cudaDeviceSynchronize();
         // Save state if necessary
-        if(save == 1){
+        if(save == 1 && (step % savefreq == 0|| step == nsteps-1)){
           cudaMemcpy(host_pos, gpu_pos, num_parts * sizeof(Vec3), cudaMemcpyDeviceToHost);
+          save_boid_data(host_pos, num_parts,prefix+ std::to_string(frame)+".ply");
+          frame++;
         }
     }
 
@@ -108,6 +126,7 @@ int main(int argc, char* argv[]) {
     double seconds = diff.count();
     // Finalize
     std::cout << "Simulation Time = " << seconds << " seconds for " << num_parts << " boids.\n";
+    std::cout << "Average FPS: " << float(nsteps / seconds) << " using " << _method << std::endl;
     cudaFree(gpu_pos);
     delete[] host_pos;
 }
