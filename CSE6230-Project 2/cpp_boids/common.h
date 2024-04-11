@@ -42,6 +42,10 @@ struct Vec3 {
         y -= other.y;
         z -= other.z;
     }
+    
+    __device__ static Vec3 floor(const Vec3& v) {
+        return Vec3(::floor(v.x), ::floor(v.y), ::floor(v.z));
+    }
 };
 
 __device__ inline float dot(const Vec3& a, const Vec3& b) {
@@ -79,6 +83,7 @@ __device__ inline Vec3 operator*(const Vec3& a, float b) {
 __device__ inline Vec3 operator/(const Vec3& a, float b) {
     return {a.x / b, a.y / b, a.z / b};
 }
+
 
 
 
