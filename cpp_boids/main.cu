@@ -12,7 +12,7 @@
 #define NUM_THREADS 256
 // change this to adjust particle count in the simulation
 const int N_FOR_VIS = 5000;
-
+std::string _method;
 __host__ __device__ unsigned int hash(unsigned int a) {
 	a = (a + 0x7ed55d16) + (a << 12);
 	a = (a ^ 0xc761c23c) ^ (a >> 19);
@@ -67,10 +67,13 @@ int find_int_arg(int argc, char** argv, const char* option, int default_value) {
 void runCUDA(Vec3* pos, int num_parts, int i) {
   if(i == 1){
     simulate_one_step_naive(pos, num_parts);
+    //_method = "naive";
   }else if(i==2){
     stepSimulationScatteredGrid(pos, num_parts);
+    _method = "scatteredGrid";
   }else if(i==3){
-    stepSimulationCoherentGrid(pos, num_parts);
+    // stepSimulationCoherentGrid(pos, num_parts);
+    _method = "coherentGrid";
   }
 }
 
@@ -93,7 +96,7 @@ int main(int argc, char* argv[]) {
     int num_parts = find_int_arg(argc, argv, "-n", N_FOR_VIS);
     int method = find_int_arg(argc, argv, "-m", 1);
     int save = find_int_arg(argc, argv, "-s", 0);
-    int  fullBlocksPerGrid = ((num_parts+NUM_THREADS-1)/ NUM_THREADS);
+    dim3 fullBlocksPerGrid((num_parts+NUM_THREADS-1)/ NUM_THREADS);
     Vec3* host_pos = new Vec3[num_parts];
     Vec3* gpu_pos ;
     cudaMalloc((void**)&gpu_pos, num_parts * sizeof(Vec3));
@@ -105,7 +108,7 @@ int main(int argc, char* argv[]) {
       int frame = 0;
       for (int step = 0; step < nsteps; ++step) {
           runCUDA(gpu_pos, num_parts, method);
-          cudaDeviceSynchronize();
+          //cudaDeviceSynchronize();
         // Save state if necessary
         if(save == 1 && (step % savefreq == 0|| step == nsteps-1)){
           cudaMemcpy(host_pos, gpu_pos, num_parts * sizeof(Vec3), cudaMemcpyDeviceToHost);
@@ -114,14 +117,15 @@ int main(int argc, char* argv[]) {
         }
     }
 
-    clear_simulation();
-    cudaDeviceSynchronize();
+
     auto end_time = std::chrono::steady_clock::now();
     std::chrono::duration<double> diff = end_time - start_time;
     double seconds = diff.count();
     // Finalize
     std::cout << "Simulation Time = " << seconds << " seconds for " << num_parts << " boids.\n";
-    cudaFree(gpu_pos);
+     std::cout << "Average FPS: " << float(nsteps / seconds) << " using " << _method << std::endl;
+    clear_simulation();
+    cudaFree(gpu_pos); 
     delete[] host_pos;
 }
 

@@ -5,7 +5,7 @@
 #include <cmath>
 // Program Constants
 #define nsteps   1000
-#define savefreq 10
+#define savefreq 1
 #define dt       0.2f
 #define scale 100
 #define centering_factor 0.01f
@@ -37,8 +37,11 @@ struct Vec3 {
         y -= other.y;
         z -= other.z;
     }
-};
 
+};
+__device__ inline Vec3 floor(const Vec3& v) {
+        return Vec3((int)v.x, (int)v.y, (int)v.z);
+    }
 __device__ inline float dot(const Vec3& a, const Vec3& b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
