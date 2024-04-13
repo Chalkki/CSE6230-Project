@@ -67,13 +67,16 @@ int find_int_arg(int argc, char** argv, const char* option, int default_value) {
 void runCUDA(Vec3* pos, int num_parts, int i) {
   if(i == 1){
     simulate_one_step_naive(pos, num_parts);
-    //_method = "naive";
+    _method = "naive";
   }else if(i==2){
     stepSimulationScatteredGrid(pos, num_parts);
     _method = "scatteredGrid";
   }else if(i==3){
     stepSimulationCoherentGrid(pos, num_parts);
     _method = "coherentGrid";
+  } else if (i==4) {
+    stepSimulationScatteredGrid_prefix(pos, num_parts);
+    _method = "scatteredGrid with prefix";
   }
 }
 

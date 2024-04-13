@@ -4,6 +4,12 @@
 #include <thrust/execution_policy.h>
 //#include <thrust/random.h>
 #include <thrust/device_vector.h>
+#include <thrust/execution_policy.h>
+
+#include <thrust/scan.h>
+#include <thrust/functional.h>
+#include <thrust/transform.h>
+
 #define NUM_THREADS 256
 
 ///
@@ -16,6 +22,8 @@ Vec3* dev_vel2;
 
 int* dev_particleArrayIndices; // What tid in dev_pos and dev_velX represents this particle?
 int* dev_particleGridIndices; // What grid cell is this particle in?
+int* dev_atomicCount;   // for prefix sum, how many particles is filled into a block
+int* dev_gridParticleCount; // for prefix sum, how many particles within this block?
 // needed for use with thrust
 thrust::device_ptr<int> dev_thrust_particleArrayIndices;
 thrust::device_ptr<int> dev_thrust_particleGridIndices;
@@ -358,6 +366,9 @@ void init_simulation(Vec3 * pos, int num_parts) {
     cudaMalloc((void**)&dev_gridCellStartIndices, gridCellCount * sizeof(int));
     cudaMalloc((void**)&dev_gridCellEndIndices, gridCellCount * sizeof(int));
     cudaMalloc((void**)&dev_pos2, num_parts * sizeof(Vec3));
+
+    cudaMalloc((void**)&dev_atomicCount, gridCellCount * sizeof(int));
+    cudaMalloc((void**)&dev_gridParticleCount, gridCellCount * sizeof(int));
     cudaDeviceSynchronize();
         
 }
@@ -437,7 +448,6 @@ void stepSimulationCoherentGrid(Vec3 * pos, int num_parts) {
 }
 
 
-
 void stepSimulationScatteredGrid(Vec3 * pos, int num_parts) {
     dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
     dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
@@ -458,8 +468,59 @@ void stepSimulationScatteredGrid(Vec3 * pos, int num_parts) {
 
 }
 
+// compute the particle block index and count number of particle within a given block
+__global__ void prefixCount(int num_parts, int gridres, Vec3 gridmin, float gridInverseCellWidth, Vec3* position, int* partCount, int* gridIndex) {
+    int tid = threadIdx.x + (blockIdx.x * blockDim.x);
+    if (tid >= num_parts) {
+        return;
+    }
+    
+    Vec3 cell_3D = floor(gridInverseCellWidth * (position[tid]-gridmin));
+    int gid = gridtid3Dto1D(cell_3D.x, cell_3D.y, cell_3D.z, gridres);
+    gridIndex[tid] = gid;
+    atomicAdd(&partCount[gid], 1);
+}
+
+__global__ void prefixSort(int num_parts, int gridResolution,  Vec3 gridMinimum, float gridInverseCellWidth, 
+                            Vec3* position, int* prefixAtomicCount, int* sort_particles, int* gridCellStart) {
+    int tid = threadIdx.x + blockIdx.x * blockDim.x;
+    if (tid >= num_parts) return;
+
+    Vec3 cell_3D = floor(gridInverseCellWidth * (position[tid]-gridMinimum));
+    int gid = gridtid3Dto1D(cell_3D.x, cell_3D.y, cell_3D.z, gridResolution);
+    int start = gridCellStart[gid];
+
+    int target = start + atomicAdd(&prefixAtomicCount[gid], 1);
+    sort_particles[target] = tid;
+}
 
 
+void stepSimulationScatteredGrid_prefix(Vec3 * pos, int num_parts) {
+    thrust::fill(thrust::device, dev_atomicCount, dev_atomicCount + gridCellCount, 0);
+    thrust::fill(thrust::device, dev_gridParticleCount, dev_gridParticleCount + gridCellCount, 0);
+
+    dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
+    dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
+    prefixCount <<<block_per_grid, NUM_THREADS>>>(num_parts, gridSideCount, gridMinimum, gridInverseCellWidth,pos, dev_gridParticleCount, dev_particleGridIndices);
+    dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
+    dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
+
+    thrust::exclusive_scan(thrust::device, dev_gridParticleCount, dev_gridParticleCount + gridCellCount, dev_gridCellStartIndices);
+    thrust::transform(dev_gridParticleCount, dev_gridParticleCount + gridCellCount, dev_gridCellStartIndices, dev_gridCellEndIndices, thrust::plus<int>());
+
+    prefixSort<<<block_per_grid, NUM_THREADS >>>(num_parts, gridSideCount, gridMinimum, gridInverseCellWidth,
+                                                  pos, dev_atomicCount, dev_particleArrayIndices, dev_gridCellStartIndices);
+    
+    kernUpdateVelocityScattered <<<block_per_grid, NUM_THREADS >>>(num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth, 
+                                                                   dev_gridCellStartIndices, dev_gridCellEndIndices, dev_particleArrayIndices, 
+                                                                   pos, dev_vel1, dev_vel2);
+    move_gpu_pos<<<block_per_grid, NUM_THREADS>>>(num_parts, pos, dev_vel2);
+    // ping-pong the velocity buffers
+    Vec3* temp = dev_vel2;
+    dev_vel2 = dev_vel1;
+    dev_vel1 = temp;
+
+}
 
 
 // Clear allocations
@@ -473,4 +534,6 @@ void clear_simulation() {
     cudaFree(dev_gridCellEndIndices);
     cudaFree(dev_particleArrayIndices);
     cudaFree(dev_particleGridIndices);
+    cudaFree(dev_atomicCount);
+    cudaFree(dev_gridParticleCount);
 }

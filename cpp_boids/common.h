@@ -15,6 +15,10 @@
 #define perception_radius 5.0f
 #define avoidance_radius 3.0f
 
+#define DEBUG_MODE true
+#if DEBUG_MODE
+#include <iostream>
+#endif
 
 
 struct Vec3 {
@@ -86,6 +90,7 @@ void init_simulation(Vec3 * pos, int num_parts);
 void simulate_one_step_naive(Vec3 * pos, int num_parts);
 void stepSimulationCoherentGrid(Vec3 * pos, int num_parts);
 void stepSimulationScatteredGrid(Vec3 * pos, int num_parts);
+void stepSimulationScatteredGrid_prefix(Vec3 * pos, int num_parts);
 void clear_simulation();
 
 #endif
