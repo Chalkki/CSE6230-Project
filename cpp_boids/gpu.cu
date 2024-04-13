@@ -419,6 +419,7 @@ void stepSimulationCoherentGrid(Vec3 * pos, int num_parts) {
     dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
     dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
     thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + num_parts, dev_thrust_particleArrayIndices);
+
     
     bufferReset<<<block_per_cell,NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
@@ -458,6 +459,114 @@ void stepSimulationScatteredGrid(Vec3 * pos, int num_parts) {
 
 }
 
+__device__ void bitonicSort(int *keys, int *values, int j, int k, int ixj, int ixk) {
+    int ixjg = ixj ^ j;
+    if (ixjg > ixk) {
+        if ((ixj & k) == 0) {
+            if (keys[ixj] > keys[ixk]) {
+                // Swap keys
+                int temp = keys[ixj];
+                keys[ixj] = keys[ixk];
+                keys[ixk] = temp;
+                // Swap values
+                temp = values[ixj];
+                values[ixj] = values[ixk];
+                values[ixk] = temp;
+            }
+        }
+        else {
+            if (keys[ixj] < keys[ixk]) {
+                // Swap keys
+                int temp = keys[ixj];
+                keys[ixj] = keys[ixk];
+                keys[ixk] = temp;
+                // Swap values
+                temp = values[ixj];
+                values[ixj] = values[ixk];
+                values[ixk] = temp;
+            }
+        }
+    }
+}
+
+__global__ void bitonicSortKernel(int *keys, int *values, int num_elements) {
+    extern __shared__ int shared[];
+    int *s_keys = shared;
+    int *s_values = &shared[num_elements];
+
+    int tid = threadIdx.x;
+    int ix = blockIdx.x * blockDim.x + tid;
+    if (ix < num_elements) {
+        s_keys[tid] = keys[ix];
+        s_values[tid] = values[ix];
+    }
+
+    __syncthreads();
+
+    for (int k = 2; k <= num_elements; k *= 2) {
+        for (int j = k / 2; j > 0; j /= 2) {
+            int ixj = tid ^ j;
+            if (ixj > tid) {
+                if ((tid & k) == 0) {
+                    if (s_keys[tid] > s_keys[ixj]) {
+                        // Swap keys
+                        int temp = s_keys[tid];
+                        s_keys[tid] = s_keys[ixj];
+                        s_keys[ixj] = temp;
+                        // Swap values
+                        temp = s_values[tid];
+                        s_values[tid] = s_values[ixj];
+                        s_values[ixj] = temp;
+                    }
+                }
+                else {
+                    if (s_keys[tid] < s_keys[ixj]) {
+                        // Swap keys
+                        int temp = s_keys[tid];
+                        s_keys[tid] = s_keys[ixj];
+                        s_keys[ixj] = temp;
+                        // Swap values
+                        temp = s_values[tid];
+                        s_values[tid] = s_values[ixj];
+                        s_values[ixj] = temp;
+                    }
+                }
+            }
+            __syncthreads();
+        }
+    }
+
+    if (ix < num_elements) {
+        keys[ix] = s_keys[tid];
+        values[ix] = s_values[tid];
+    }
+}
+
+void stepSimulationCoherentBoitGrid(Vec3 * pos, int num_parts) {
+    dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
+    dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
+
+    computeIndices<<<block_per_grid, NUM_THREADS>>>(num_parts, gridSideCount, gridMinimum,gridInverseCellWidth,pos, dev_particleArrayIndices,dev_particleGridIndices);
+
+    // Calculate number of threads and blocks for Bitonic sort
+    int num_threads = 1024;  // Maximum possible size due to shared memory limits and CUDA architecture
+    int num_blocks = (num_parts + num_threads - 1) / num_threads;
+
+    bitonicSortKernel<<<num_blocks, num_threads, sizeof(int) * num_threads * 2>>>(dev_particleGridIndices, dev_particleArrayIndices, num_parts);
+
+    bufferReset<<<block_per_cell,NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
+    identifyCellInfo<<<block_per_grid, NUM_THREADS>>>(num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
+    posReshuffle<<<block_per_grid, NUM_THREADS>>>(num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
+    
+    kernUpdateVelNeighborCoherent<<<block_per_grid, NUM_THREADS>>>(
+        num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth,
+        dev_gridCellStartIndices, dev_gridCellEndIndices, dev_pos2, dev_vel2, dev_vel1);
+    move_gpu_pos<<<block_per_grid, NUM_THREADS>>>(num_parts, dev_pos2, dev_vel1);
+    // ping-pong the position buffers
+    Vec3* temp = dev_pos2;
+    dev_pos2 = pos;
+    pos = temp;
+}
 
 
 
