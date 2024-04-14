@@ -1,6 +1,7 @@
 #include "common.h"
 #include <cuda.h>
 #include <thrust/sort.h>
+#include <thrust/device_ptr.h>
 #include <thrust/execution_policy.h>
 //#include <thrust/random.h>
 #include <thrust/device_vector.h>
@@ -10,6 +11,7 @@
 #include <thrust/functional.h>
 #include <thrust/transform.h>
 
+#include <cuda_runtime.h>
 #define NUM_THREADS 256
 
 ///
@@ -426,10 +428,15 @@ void stepSimulationCoherentGrid(Vec3 * pos, int num_parts) {
     dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
     dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
     computeIndices <<<block_per_grid, NUM_THREADS>>>(num_parts, gridSideCount, gridMinimum,gridInverseCellWidth,pos, dev_particleArrayIndices,dev_particleGridIndices);
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
+    thrust::device_ptr<int> dev_thrust_particleGridIndices(dev_particleGridIndices);
+thrust::device_ptr<int> dev_thrust_particleArrayIndices(dev_particleArrayIndices);
 
-    dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
-    dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
-    thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + num_parts, dev_thrust_particleArrayIndices);
+// Explicitly use stable_sort_by_key which uses radix sort by default for integers
+thrust::stable_sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + num_parts, dev_thrust_particleArrayIndices);
+    cudaStreamSynchronize(stream);
+    cudaStreamDestroy(stream);
     
     bufferReset<<<block_per_cell,NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
@@ -456,6 +463,7 @@ void stepSimulationScatteredGrid(Vec3 * pos, int num_parts) {
     dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
     dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
     thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + num_parts, dev_thrust_particleArrayIndices);
+
     bufferReset<<<block_per_cell,NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
     
@@ -515,6 +523,81 @@ void stepSimulationScatteredGrid_prefix(Vec3 * pos, int num_parts) {
     dev_vel1 = temp;
 
 }
+__device__ void bitonicCompare(int* keys, int* values, int i, int j, int dir) {
+    int key_i = keys[i];
+    int key_j = keys[j];
+    int value_i = values[i];
+    int value_j = values[j];
+
+    if ((dir == 1 && key_i > key_j) || (dir == 0 && key_i < key_j)) {
+        // Swap keys
+        keys[i] = key_j;
+        keys[j] = key_i;
+        // Swap values
+        values[i] = value_j;
+        values[j] = value_i;
+    }
+}
+
+__global__ void bitonicSortKernel(int* keys, int* values, int j, int k) {
+    unsigned int i, ixj; /* Sorting partners: i and ixj */
+    i = threadIdx.x + blockDim.x * blockIdx.x;
+    ixj = i^j;
+
+    // The threads with the lowest ids sort the array.
+    if ((ixj)>i) {
+        if ((i&k) == 0) {
+            // Ascending order
+            bitonicCompare(keys, values, i, ixj, 1);
+        }
+        else {
+            // Descending order
+            bitonicCompare(keys, values, i, ixj, 0);
+        }
+    }
+}
+
+void bitonicSort(int* dev_keys, int* dev_values, int num_elements) {
+    dim3 blocks((num_elements + 511)/512); // Number of blocks
+    dim3 threads(512); // Number of threads per block
+
+    int j, k;
+    for (k = 2; k <= num_elements; k <<= 1) {
+        for (j=k>>1; j>0; j=j>>1) {
+            bitonicSortKernel<<<blocks, threads>>>(dev_keys, dev_values, j, k);
+            cudaDeviceSynchronize();
+        }
+    }
+}
+
+
+
+void stepSimulationCoherentBoitGrid(Vec3 * pos, int num_parts) {
+    dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
+    dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
+
+    computeIndices<<<block_per_grid, NUM_THREADS>>>(num_parts, gridSideCount, gridMinimum,gridInverseCellWidth,pos, dev_particleArrayIndices,dev_particleGridIndices);
+
+    // Prepare for bitonic sort
+    bitonicSort(dev_particleGridIndices, dev_particleArrayIndices, num_parts); // Custom bitonic sort for key-value pairs
+    
+    bufferReset<<<block_per_cell, NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
+
+    identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
+    posReshuffle<<<block_per_grid, NUM_THREADS>>> (num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
+    
+    kernUpdateVelNeighborCoherent<<<block_per_grid, NUM_THREADS>>>(
+        num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth,
+        dev_gridCellStartIndices, dev_gridCellEndIndices, dev_pos2, dev_vel2, dev_vel1);
+
+    move_gpu_pos<<<block_per_grid, NUM_THREADS>>>(num_parts, dev_pos2, dev_vel1);
+    // ping-pong the position buffers
+    Vec3* temp = dev_pos2;
+    dev_pos2 = pos;
+    pos = temp;
+}
+
+
 
 
 // Clear allocations

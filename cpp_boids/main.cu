@@ -74,9 +74,15 @@ void runCUDA(Vec3* pos, int num_parts, int i) {
   }else if(i==3){
     stepSimulationCoherentGrid(pos, num_parts);
     _method = "coherentGrid";
-  } else if (i==4) {
+<<<<<<< HEAD
+  } else if (i==5) {
     stepSimulationScatteredGrid_prefix(pos, num_parts);
     _method = "scatteredGrid with prefix";
+=======
+  }else if(i == 4){
+    stepSimulationCoherentBoitGrid(pos, num_parts);
+    _method = "coherentGrid";
+>>>>>>> c0841c4410311618410b97ee5a779e9d4a059dbe
   }
 }
 
