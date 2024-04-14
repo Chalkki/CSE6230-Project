@@ -86,6 +86,7 @@ void init_simulation(Vec3 * pos, int num_parts);
 void simulate_one_step_naive(Vec3 * pos, int num_parts);
 void stepSimulationCoherentGrid(Vec3 * pos, int num_parts);
 void stepSimulationScatteredGrid(Vec3 * pos, int num_parts);
+void stepSimulationCoherentBoitGrid(Vec3 * pos, int num_parts);
 void clear_simulation();
 
 #endif
