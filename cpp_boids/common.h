@@ -15,12 +15,6 @@
 #define perception_radius 5.0f
 #define avoidance_radius 3.0f
 
-#define DEBUG_MODE true
-#if DEBUG_MODE
-#include <iostream>
-#endif
-
-
 struct Vec3 {
     float x;
     float y;

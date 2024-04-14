@@ -481,14 +481,12 @@ __global__ void prefixCount(int num_parts, int gridres, Vec3 gridmin, float grid
     atomicAdd(&partCount[gid], 1);
 }
 
-__global__ void prefixSort(int num_parts, int gridResolution,  Vec3 gridMinimum, float gridInverseCellWidth, 
-                            Vec3* position, int* prefixAtomicCount, int* sort_particles, int* gridCellStart) {
+__global__ void prefixSort(int num_parts, int* prefixAtomicCount, int* sort_particles, int* gridCellEnd, int* gridIndex) {
     int tid = threadIdx.x + blockIdx.x * blockDim.x;
     if (tid >= num_parts) return;
 
-    Vec3 cell_3D = floor(gridInverseCellWidth * (position[tid]-gridMinimum));
-    int gid = gridtid3Dto1D(cell_3D.x, cell_3D.y, cell_3D.z, gridResolution);
-    int start = gridCellStart[gid];
+    int gid = gridIndex[tid];
+    int start = (gid == 0) ? 0 : gridCellEnd[gid-1];
 
     int target = start + atomicAdd(&prefixAtomicCount[gid], 1);
     sort_particles[target] = tid;
@@ -502,14 +500,10 @@ void stepSimulationScatteredGrid_prefix(Vec3 * pos, int num_parts) {
     dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
     dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
     prefixCount <<<block_per_grid, NUM_THREADS>>>(num_parts, gridSideCount, gridMinimum, gridInverseCellWidth,pos, dev_gridParticleCount, dev_particleGridIndices);
-    dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
-    dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
 
     thrust::exclusive_scan(thrust::device, dev_gridParticleCount, dev_gridParticleCount + gridCellCount, dev_gridCellStartIndices);
-    thrust::transform(dev_gridParticleCount, dev_gridParticleCount + gridCellCount, dev_gridCellStartIndices, dev_gridCellEndIndices, thrust::plus<int>());
-
-    prefixSort<<<block_per_grid, NUM_THREADS >>>(num_parts, gridSideCount, gridMinimum, gridInverseCellWidth,
-                                                  pos, dev_atomicCount, dev_particleArrayIndices, dev_gridCellStartIndices);
+    thrust::transform(thrust::device, dev_gridParticleCount, dev_gridParticleCount + gridCellCount, dev_gridCellStartIndices, dev_gridCellEndIndices, thrust::plus<int>());
+    prefixSort<<<block_per_grid, NUM_THREADS >>>(num_parts, dev_atomicCount, dev_particleArrayIndices, dev_gridCellEndIndices, dev_particleGridIndices);
     
     kernUpdateVelocityScattered <<<block_per_grid, NUM_THREADS >>>(num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth, 
                                                                    dev_gridCellStartIndices, dev_gridCellEndIndices, dev_particleArrayIndices, 
