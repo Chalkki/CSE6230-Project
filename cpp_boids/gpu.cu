@@ -428,15 +428,10 @@ void stepSimulationCoherentGrid(Vec3 * pos, int num_parts) {
     dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
     dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
     computeIndices <<<block_per_grid, NUM_THREADS>>>(num_parts, gridSideCount, gridMinimum,gridInverseCellWidth,pos, dev_particleArrayIndices,dev_particleGridIndices);
-    cudaStream_t stream;
-    cudaStreamCreate(&stream);
-    thrust::device_ptr<int> dev_thrust_particleGridIndices(dev_particleGridIndices);
-thrust::device_ptr<int> dev_thrust_particleArrayIndices(dev_particleArrayIndices);
+    dev_thrust_particleGridIndices = thrust::device_ptr<int>(dev_particleGridIndices);
+    dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
 
-// Explicitly use stable_sort_by_key which uses radix sort by default for integers
-thrust::stable_sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + num_parts, dev_thrust_particleArrayIndices);
-    cudaStreamSynchronize(stream);
-    cudaStreamDestroy(stream);
+thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + num_parts, dev_thrust_particleArrayIndices);
     
     bufferReset<<<block_per_cell,NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
