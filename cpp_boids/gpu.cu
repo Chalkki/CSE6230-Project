@@ -155,17 +155,6 @@ __global__ void kernUpdateVelocityScattered(int N, int gridRes, Vec3 gridMin, fl
     Vec3 pos_self = pos[tid];
     Vec3 grid_c = inverseCW * (pos_self - gridMin);
     Vec3 grid_c_int = floor(grid_c);
-    Vec3 grid_c_frac = grid_c-grid_c_int;
-    
-    Vec3 neg_c;
-    Vec3 pos_c;
-    
-    neg_c.x = (grid_c_frac.x <= 0.5f && grid_c_int.x > 0) ? 1.0f : 0.0f;
-    neg_c.y = (grid_c_frac.y <= 0.5f && grid_c_int.y > 0) ? 1.0f : 0.0f;
-    neg_c.z = (grid_c_frac.z <= 0.5f && grid_c_int.z > 0) ? 1.0f : 0.0f;
-    pos_c.x = (grid_c_frac.x > 0.5f && grid_c_int.x < gridRes-1) ? 1.0f : 0.0f;
-    pos_c.y = (grid_c_frac.y > 0.5f && grid_c_int.y < gridRes-1) ? 1.0f : 0.0f;
-    pos_c.z = (grid_c_frac.z > 0.5f && grid_c_int.z < gridRes-1) ? 1.0f : 0.0f;
     
     Vec3 velocity_change = Vec3();
     Vec3 perceived_center = Vec3();
@@ -175,10 +164,12 @@ __global__ void kernUpdateVelocityScattered(int N, int gridRes, Vec3 gridMin, fl
     unsigned int num_neighbors_r1 = 0;
     unsigned int num_neighbors_r3 = 0;
     
-    for(int z = grid_c_int.z -  neg_c.z;  z <= grid_c_int.z + pos_c.z; z++){
-        for(int y = grid_c_int.y -  neg_c.y;  y <= grid_c_int.y + pos_c.y; y++){
-            for(int x = grid_c_int.x -  neg_c.x;  x <= grid_c_int.x + pos_c.x; x++){
-                int neigh_id = gridtid3Dto1D(x,y,z, gridRes);
+    for(int delta_z = -1;  delta_z <= 1; delta_z++){
+        for(int delta_y = -1;  delta_y <= 1; delta_y++){
+            for(int delta_x = -1;  delta_x <= 1; delta_x++){
+                int neigh_id = gridtid3Dto1D(grid_c_int.x + delta_x,
+                                             grid_c_int.y + delta_y,
+                                             grid_c_int.z + delta_z, gridRes);
                 if(startIndex[neigh_id] == -1){
                     continue;
                 }
@@ -188,22 +179,23 @@ __global__ void kernUpdateVelocityScattered(int N, int gridRes, Vec3 gridMin, fl
                     
                     if(other_boids != tid){
                     
-                        float dist_to_other = norm(pos_other - pos_self);
+                        Vec3 dist = pos_other - pos_self;
+                        float dist_mag2 = dot(dist, dist);
 
-                        if (dist_to_other < perception_radius)
+                        if (dist_mag2 < perception_radius2)
                         {
                             perceived_center += pos_other;
                             num_neighbors_r1++;
                         }
                 
                         // Rule 2: boids try to stay a distance d away from each other
-                        if (dist_to_other < avoidance_radius)
+                        if (dist_mag2 < avoidance_radius2)
                         {
                             c -= (pos_other - pos_self);
                         }
                 
                         // Rule 3: boids try to match the speed of surrounding boids
-                        if (dist_to_other < perception_radius)
+                        if (dist_mag2 < perception_radius2)
                         {
                             perceived_velocity += vel1[other_boids];
                             num_neighbors_r3++;
@@ -239,18 +231,18 @@ __global__ void kernUpdateVelocityScattered(int N, int gridRes, Vec3 gridMin, fl
 
 }
 
-// __global__ void posReshuffle(
-//     int num_parts, Vec3* pos1, Vec3* pos2, Vec3* vel1, Vec3* vel2,
-//     int* particleArrayIndices) {
-//     int tid = threadIdx.x + (blockIdx.x * blockDim.x);
-//     if (tid >= num_parts) {
-//         return;
-//     }
+__global__ void posReshuffle(
+    int num_parts, Vec3* pos1, Vec3* pos2, Vec3* vel1, Vec3* vel2,
+    int* particleArrayIndices) {
+    int tid = threadIdx.x + (blockIdx.x * blockDim.x);
+    if (tid >= num_parts) {
+        return;
+    }
 
-//     int p_arr_idx = particleArrayIndices[tid];
-//     pos2[tid] = pos1[p_arr_idx];
-//     vel2[tid] = vel1[p_arr_idx];
-// }
+    int p_arr_idx = particleArrayIndices[tid];
+    pos2[tid] = pos1[p_arr_idx];
+    vel2[tid] = vel1[p_arr_idx];
+}
 
 
 __global__ void kernUpdateVelNeighborCoherent(int N, int gridRes, Vec3 gridMin, float inverseCW, float cW, int* startIndex, int* endIndex, Vec3 * pos, Vec3* vel1, Vec3* vel2){
@@ -259,20 +251,9 @@ __global__ void kernUpdateVelNeighborCoherent(int N, int gridRes, Vec3 gridMin, 
         return;
     }
     
-    Vec3 pos_self = pos[tid];
+     Vec3 pos_self = pos[tid];
     Vec3 grid_c = inverseCW * (pos_self - gridMin);
     Vec3 grid_c_int = floor(grid_c);
-    Vec3 grid_c_frac = grid_c-grid_c_int;
-    
-    Vec3 neg_c;
-    Vec3 pos_c;
-    
-    neg_c.x = (grid_c_frac.x <= 0.5f && grid_c_int.x > 0) ? 1.0f : 0.0f;
-    neg_c.y = (grid_c_frac.y <= 0.5f && grid_c_int.y > 0) ? 1.0f : 0.0f;
-    neg_c.z = (grid_c_frac.z <= 0.5f && grid_c_int.z > 0) ? 1.0f : 0.0f;
-    pos_c.x = (grid_c_frac.x > 0.5f && grid_c_int.x < gridRes-1) ? 1.0f : 0.0f;
-    pos_c.y = (grid_c_frac.y > 0.5f && grid_c_int.y < gridRes-1) ? 1.0f : 0.0f;
-    pos_c.z = (grid_c_frac.z > 0.5f && grid_c_int.z < gridRes-1) ? 1.0f : 0.0f;
     
     Vec3 velocity_change = Vec3();
     Vec3 perceived_center = Vec3();
@@ -282,10 +263,13 @@ __global__ void kernUpdateVelNeighborCoherent(int N, int gridRes, Vec3 gridMin, 
     unsigned int num_neighbors_r1 = 0;
     unsigned int num_neighbors_r3 = 0;
     
-    for(int z = grid_c_int.z -  neg_c.z;  z <= grid_c_int.z + pos_c.z; z++){
-        for(int y = grid_c_int.y -  neg_c.y;  y <= grid_c_int.y + pos_c.y; y++){
-            for(int x = grid_c_int.x -  neg_c.x;  x <= grid_c_int.x + pos_c.x; x++){
-                int neigh_id = gridtid3Dto1D(x,y,z, gridRes);
+    for(int delta_z = -1;  delta_z <= 1; delta_z++){
+        for(int delta_y = -1;  delta_y <= 1; delta_y++){
+            for(int delta_x = -1;  delta_x <= 1; delta_x++){
+                int neigh_id = gridtid3Dto1D(grid_c_int.x + delta_x,
+                                             grid_c_int.y + delta_y,
+                                             grid_c_int.z + delta_z, gridRes);
+
                 if(startIndex[neigh_id] == -1){
                     continue;
                 }
@@ -294,22 +278,23 @@ __global__ void kernUpdateVelNeighborCoherent(int N, int gridRes, Vec3 gridMin, 
                     
                     if(c_ind != tid){
                     
-                        float dist_to_other = norm(pos_other - pos_self);
+                        Vec3 dist = pos_other - pos_self;
+                        float dist_mag2 = dot(dist, dist);
 
-                        if (dist_to_other < perception_radius)
+                        if (dist_mag2 < perception_radius2)
                         {
                             perceived_center += pos_other;
                             num_neighbors_r1++;
                         }
                 
                         // Rule 2: boids try to stay a distance d away from each other
-                        if (dist_to_other < avoidance_radius)
+                        if (dist_mag2 < avoidance_radius2)
                         {
                             c -= (pos_other - pos_self);
                         }
                 
                         // Rule 3: boids try to match the speed of surrounding boids
-                        if (dist_to_other < perception_radius)
+                        if (dist_mag2 < perception_radius2)
                         {
                             perceived_velocity += vel1[c_ind];
                             num_neighbors_r3++;
@@ -354,17 +339,6 @@ __global__ void kernUpdateVelocityScattered_prefix(int N, int gridRes, Vec3 grid
     Vec3 pos_self = pos[tid];
     Vec3 grid_c = inverseCW * (pos_self - gridMin);
     Vec3 grid_c_int = floor(grid_c);
-    Vec3 grid_c_frac = grid_c-grid_c_int;
-    
-    Vec3 neg_c;
-    Vec3 pos_c;
-    
-    neg_c.x = (grid_c_frac.x <= 0.5f && grid_c_int.x > 0) ? 1.0f : 0.0f;
-    neg_c.y = (grid_c_frac.y <= 0.5f && grid_c_int.y > 0) ? 1.0f : 0.0f;
-    neg_c.z = (grid_c_frac.z <= 0.5f && grid_c_int.z > 0) ? 1.0f : 0.0f;
-    pos_c.x = (grid_c_frac.x > 0.5f && grid_c_int.x < gridRes-1) ? 1.0f : 0.0f;
-    pos_c.y = (grid_c_frac.y > 0.5f && grid_c_int.y < gridRes-1) ? 1.0f : 0.0f;
-    pos_c.z = (grid_c_frac.z > 0.5f && grid_c_int.z < gridRes-1) ? 1.0f : 0.0f;
     
     Vec3 velocity_change = Vec3();
     Vec3 perceived_center = Vec3();
@@ -374,35 +348,35 @@ __global__ void kernUpdateVelocityScattered_prefix(int N, int gridRes, Vec3 grid
     unsigned int num_neighbors_r1 = 0;
     unsigned int num_neighbors_r3 = 0;
     
-    for(int z = grid_c_int.z -  neg_c.z;  z <= grid_c_int.z + pos_c.z; z++){
-        for(int y = grid_c_int.y -  neg_c.y;  y <= grid_c_int.y + pos_c.y; y++){
-            for(int x = grid_c_int.x -  neg_c.x;  x <= grid_c_int.x + pos_c.x; x++){
-                if (dot(Vec3(x, y, z) - grid_c_int, vel1[tid]) < 0) continue;
-
-                int neigh_id = gridtid3Dto1D(x,y,z, gridRes);
+    for(int delta_z = -1;  delta_z <= 1; delta_z++){
+        for(int delta_y = -1;  delta_y <= 1; delta_y++){
+            for(int delta_x = -1;  delta_x <= 1; delta_x++){
+                int neigh_id = gridtid3Dto1D(grid_c_int.x + delta_x,
+                                             grid_c_int.y + delta_y,
+                                             grid_c_int.z + delta_z, gridRes);
 
                 for(int c_ind = startIndex[neigh_id]; c_ind < endIndex[neigh_id]; c_ind++){
                     int other_boids  =  particleArrayIndex[c_ind];
                     Vec3 pos_other = pos[other_boids];
                     
                     if(other_boids != tid){
-                    
-                        float dist_to_other = norm(pos_other - pos_self);
+                        Vec3 dist = pos_other - pos_self;
+                        float dist_mag2 = dot(dist, dist);
 
-                        if (dist_to_other < perception_radius)
+                        if (dist_mag2 < perception_radius2)
                         {
                             perceived_center += pos_other;
                             num_neighbors_r1++;
                         }
                 
                         // Rule 2: boids try to stay a distance d away from each other
-                        if (dist_to_other < avoidance_radius)
+                        if (dist_mag2 < avoidance_radius2)
                         {
                             c -= (pos_other - pos_self);
                         }
                 
                         // Rule 3: boids try to match the speed of surrounding boids
-                        if (dist_to_other < perception_radius)
+                        if (dist_mag2 < perception_radius2)
                         {
                             perceived_velocity += vel1[other_boids];
                             num_neighbors_r3++;
@@ -427,8 +401,7 @@ __global__ void kernUpdateVelocityScattered_prefix(int N, int gridRes, Vec3 grid
     
     
     Vec3 new_velocity = vel1[tid] + velocity_change;
-    
-    if (norm(new_velocity) > speed_limit)
+    if (dot(new_velocity, new_velocity) > speed_limit * speed_limit)
     {
         new_velocity = speed_limit * normalize(new_velocity);
     }
@@ -447,17 +420,6 @@ __global__ void kernUpdateVelNeighborCoherent_prefix(int N, int gridRes, Vec3 gr
     Vec3 pos_self = pos[tid];
     Vec3 grid_c = inverseCW * (pos_self - gridMin);
     Vec3 grid_c_int = floor(grid_c);
-    Vec3 grid_c_frac = grid_c-grid_c_int;
-    
-    Vec3 neg_c;
-    Vec3 pos_c;
-    
-    neg_c.x = (grid_c_frac.x <= 0.5f && grid_c_int.x > 0) ? 1.0f : 0.0f;
-    neg_c.y = (grid_c_frac.y <= 0.5f && grid_c_int.y > 0) ? 1.0f : 0.0f;
-    neg_c.z = (grid_c_frac.z <= 0.5f && grid_c_int.z > 0) ? 1.0f : 0.0f;
-    pos_c.x = (grid_c_frac.x > 0.5f && grid_c_int.x < gridRes-1) ? 1.0f : 0.0f;
-    pos_c.y = (grid_c_frac.y > 0.5f && grid_c_int.y < gridRes-1) ? 1.0f : 0.0f;
-    pos_c.z = (grid_c_frac.z > 0.5f && grid_c_int.z < gridRes-1) ? 1.0f : 0.0f;
     
     Vec3 velocity_change = Vec3();
     Vec3 perceived_center = Vec3();
@@ -467,34 +429,35 @@ __global__ void kernUpdateVelNeighborCoherent_prefix(int N, int gridRes, Vec3 gr
     unsigned int num_neighbors_r1 = 0;
     unsigned int num_neighbors_r3 = 0;
     
-    for(int z = grid_c_int.z -  neg_c.z;  z <= grid_c_int.z + pos_c.z; z++){
-        for(int y = grid_c_int.y -  neg_c.y;  y <= grid_c_int.y + pos_c.y; y++){
-            for(int x = grid_c_int.x -  neg_c.x;  x <= grid_c_int.x + pos_c.x; x++){
-                if (dot(Vec3(x, y, z) - grid_c_int, vel1[tid]) < 0) continue;
-                
-                int neigh_id = gridtid3Dto1D(x,y,z, gridRes);
+    for(int delta_z = -1;  delta_z <= 1; delta_z++){
+        for(int delta_y = -1;  delta_y <= 1; delta_y++){
+            for(int delta_x = -1;  delta_x <= 1; delta_x++){
+                int neigh_id = gridtid3Dto1D(grid_c_int.x + delta_x,
+                                             grid_c_int.y + delta_y,
+                                             grid_c_int.z + delta_z, gridRes);
 
-                for(int c_ind = startIndex[neigh_id]; c_ind < endIndex[neigh_id]; c_ind++){
+                for(int c_ind = startIndex[neigh_id]; c_ind <= endIndex[neigh_id]; c_ind++){
                     Vec3 pos_other = pos[c_ind];
                     
                     if(c_ind != tid){
                     
-                        float dist_to_other = norm(pos_other - pos_self);
+                        Vec3 dist = pos_other - pos_self;
+                        float dist_mag2 = dot(dist, dist);
 
-                        if (dist_to_other < perception_radius)
+                        if (dist_mag2 < perception_radius2)
                         {
                             perceived_center += pos_other;
                             num_neighbors_r1++;
                         }
                 
                         // Rule 2: boids try to stay a distance d away from each other
-                        if (dist_to_other < avoidance_radius)
+                        if (dist_mag2 < avoidance_radius2)
                         {
                             c -= (pos_other - pos_self);
                         }
                 
                         // Rule 3: boids try to match the speed of surrounding boids
-                        if (dist_to_other < perception_radius)
+                        if (dist_mag2 < perception_radius2)
                         {
                             perceived_velocity += vel1[c_ind];
                             num_neighbors_r3++;
@@ -538,7 +501,8 @@ void init_simulation(Vec3 * pos, int num_parts) {
     cudaMalloc((void**)&dev_vel2, num_parts * sizeof(Vec3));
 
     // computing grid params
-    gridCellWidth = 2.0f * perception_radius;
+    gridCellWidth = 1.0f * perception_radius;
+
     int halfSideCount = (int)(scale / gridCellWidth) + 1;
     gridSideCount = 2 * halfSideCount;
     gridCellCount = gridSideCount * gridSideCount * gridSideCount;
@@ -621,15 +585,15 @@ thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndic
     thrust::fill(thrust::device, dev_gridCellStartIndices, dev_gridCellStartIndices + gridCellCount, -1);
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
     // posReshuffle<<<block_per_grid, NUM_THREADS>>> (num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
-  thrust::device_ptr<Vec3>thrust_pos(pos);
-  thrust::device_ptr<Vec3>thrust_vel1(dev_vel1);
-  thrust::device_ptr<Vec3>thrust_pos2(dev_pos2);
-  thrust::device_ptr<Vec3>thrust_vel2(dev_vel2);
+    thrust::device_ptr<Vec3>thrust_pos(pos);
+    thrust::device_ptr<Vec3>thrust_vel1(dev_vel1);
+    thrust::device_ptr<Vec3>thrust_pos2(dev_pos2);
+    thrust::device_ptr<Vec3>thrust_vel2(dev_vel2);
 
-  thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_pos,
-                 thrust_pos2);
-  thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_vel1,
-                 thrust_vel2);
+    thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_pos,
+                    thrust_pos2);
+    thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_vel1,
+                    thrust_vel2);
     kernUpdateVelNeighborCoherent<<<block_per_grid, NUM_THREADS>>>(
         num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth,
         dev_gridCellStartIndices, dev_gridCellEndIndices, dev_pos2, dev_vel2, dev_vel1);
@@ -794,16 +758,16 @@ void stepSimulationCoherentBoitGrid(Vec3 * pos, int num_parts) {
     bufferReset<<<block_per_cell, NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
 
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
-    // posReshuffle<<<block_per_grid, NUM_THREADS>>> (num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
-  thrust::device_ptr<Vec3>thrust_pos(pos);
-  thrust::device_ptr<Vec3>thrust_vel1(dev_vel1);
-  thrust::device_ptr<Vec3>thrust_pos2(dev_pos2);
-  thrust::device_ptr<Vec3>thrust_vel2(dev_vel2);
+    posReshuffle<<<block_per_grid, NUM_THREADS>>> (num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
+//   thrust::device_ptr<Vec3>thrust_pos(pos);
+//   thrust::device_ptr<Vec3>thrust_vel1(dev_vel1);
+//   thrust::device_ptr<Vec3>thrust_pos2(dev_pos2);
+//   thrust::device_ptr<Vec3>thrust_vel2(dev_vel2);
 
-  thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_pos,
-                 thrust_pos2);
-  thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_vel1,
-                 thrust_vel2);    
+//   thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_pos,
+//                  thrust_pos2);
+//   thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_vel1,
+//                  thrust_vel2);    
     kernUpdateVelNeighborCoherent<<<block_per_grid, NUM_THREADS>>>(
         num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth,
         dev_gridCellStartIndices, dev_gridCellEndIndices, dev_pos2, dev_vel2, dev_vel1);

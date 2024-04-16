@@ -1,5 +1,5 @@
 cd build
-salloc -N1 --mem-per-gpu=20G -t1:00:00 --gres=gpu:H100:1 --ntasks-per-node=1
+salloc -N1 --mem-per-gpu=20G -t2:00:00 --gres=gpu:H100:1 --ntasks-per-node=1
 module purge
 module load cuda/12
 module load cmake

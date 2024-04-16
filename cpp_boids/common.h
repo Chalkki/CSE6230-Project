@@ -15,6 +15,9 @@
 #define perception_radius 5.0f
 #define avoidance_radius 3.0f
 
+#define perception_radius2 perception_radius * perception_radius
+#define avoidance_radius2 avoidance_radius * avoidance_radius
+
 struct Vec3 {
     float x;
     float y;
@@ -75,8 +78,6 @@ __device__ inline Vec3 operator*(const Vec3& a, float b) {
 __device__ inline Vec3 operator/(const Vec3& a, float b) {
     return {a.x / b, a.y / b, a.z / b};
 }
-
-
 
 
 // Simulation routine
