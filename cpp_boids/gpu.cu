@@ -10,10 +10,9 @@
 #include <thrust/scan.h>
 #include <thrust/functional.h>
 #include <thrust/transform.h>
-
+#include <thrust/gather.h>
 #include <cuda_runtime.h>
 #define NUM_THREADS 256
-
 ///
 
 // Put any static global variables here that you will use throughout the simulation.
@@ -239,18 +238,18 @@ __global__ void kernUpdateVelocityScattered(int N, int gridRes, Vec3 gridMin, fl
 
 }
 
-__global__ void posReshuffle(
-    int num_parts, Vec3* pos1, Vec3* pos2, Vec3* vel1, Vec3* vel2,
-    int* particleArrayIndices) {
-    int tid = threadIdx.x + (blockIdx.x * blockDim.x);
-    if (tid >= num_parts) {
-        return;
-    }
+// __global__ void posReshuffle(
+//     int num_parts, Vec3* pos1, Vec3* pos2, Vec3* vel1, Vec3* vel2,
+//     int* particleArrayIndices) {
+//     int tid = threadIdx.x + (blockIdx.x * blockDim.x);
+//     if (tid >= num_parts) {
+//         return;
+//     }
 
-    int p_arr_idx = particleArrayIndices[tid];
-    pos2[tid] = pos1[p_arr_idx];
-    vel2[tid] = vel1[p_arr_idx];
-}
+//     int p_arr_idx = particleArrayIndices[tid];
+//     pos2[tid] = pos1[p_arr_idx];
+//     vel2[tid] = vel1[p_arr_idx];
+// }
 
 
 __global__ void kernUpdateVelNeighborCoherent(int N, int gridRes, Vec3 gridMin, float inverseCW, float cW, int* startIndex, int* endIndex, Vec3 * pos, Vec3* vel1, Vec3* vel2){
@@ -435,18 +434,22 @@ thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndic
     
     bufferReset<<<block_per_cell,NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
-    posReshuffle<<<block_per_grid, NUM_THREADS>>> (num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
-    
+    // posReshuffle<<<block_per_grid, NUM_THREADS>>> (num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
+  thrust::device_ptr<Vec3>thrust_pos(pos);
+  thrust::device_ptr<Vec3>thrust_vel1(dev_vel1);
+  thrust::device_ptr<Vec3>thrust_pos2(dev_pos2);
+  thrust::device_ptr<Vec3>thrust_vel2(dev_vel2);
+
+  thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_pos,
+                 thrust_pos2);
+  thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_vel1,
+                 thrust_vel2);
     kernUpdateVelNeighborCoherent<<<block_per_grid, NUM_THREADS>>>(
         num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth,
         dev_gridCellStartIndices, dev_gridCellEndIndices, dev_pos2, dev_vel2, dev_vel1);
     move_gpu_pos<<<block_per_grid, NUM_THREADS>>>(num_parts, dev_pos2, dev_vel1);
     // ping-pong the position buffers
-    Vec3* temp = dev_pos2;
-    dev_pos2 = pos;
-    pos = temp;
-    
-
+    std::swap(pos,dev_pos2);
 }
 
 
@@ -579,8 +582,16 @@ void stepSimulationCoherentBoitGrid(Vec3 * pos, int num_parts) {
     bufferReset<<<block_per_cell, NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
 
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
-    posReshuffle<<<block_per_grid, NUM_THREADS>>> (num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
-    
+    // posReshuffle<<<block_per_grid, NUM_THREADS>>> (num_parts, pos, dev_pos2, dev_vel1, dev_vel2, dev_particleArrayIndices);
+  thrust::device_ptr<Vec3>thrust_pos(pos);
+  thrust::device_ptr<Vec3>thrust_vel1(dev_vel1);
+  thrust::device_ptr<Vec3>thrust_pos2(dev_pos2);
+  thrust::device_ptr<Vec3>thrust_vel2(dev_vel2);
+
+  thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_pos,
+                 thrust_pos2);
+  thrust::gather(dev_thrust_particleArrayIndices, dev_thrust_particleArrayIndices + num_parts, thrust_vel1,
+                 thrust_vel2);    
     kernUpdateVelNeighborCoherent<<<block_per_grid, NUM_THREADS>>>(
         num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth,
         dev_gridCellStartIndices, dev_gridCellEndIndices, dev_pos2, dev_vel2, dev_vel1);
