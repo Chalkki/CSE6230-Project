@@ -613,8 +613,8 @@ void stepSimulationScatteredGrid(Vec3 * pos, int num_parts) {
     dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
     thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + num_parts, dev_thrust_particleArrayIndices);
 
-    bufferReset<<<block_per_grid, NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
-    bufferReset<<<block_per_grid, NUM_THREADS>>>(gridCellCount, dev_gridCellEndIndices, -1);
+    bufferReset<<<block_per_cell, NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
+    bufferReset<<<block_per_cell, NUM_THREADS>>>(gridCellCount, dev_gridCellEndIndices, -1);
     // thrust::fill(thrust::device, dev_gridCellStartIndices, dev_gridCellStartIndices + gridCellCount, -1);
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
     
@@ -680,8 +680,8 @@ void stepSimulationScatteredGrid_prefix(Vec3 * pos, int num_parts) {
     dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
     dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
 
-    bufferReset<<<block_per_grid, NUM_THREADS>>>(gridCellCount, dev_atomicCount, 0);
-    bufferReset<<<block_per_grid, NUM_THREADS>>>(gridCellCount, dev_gridParticleCount, 0);
+    bufferReset<<<block_per_cell, NUM_THREADS>>>(gridCellCount, dev_atomicCount, 0);
+    bufferReset<<<block_per_cell, NUM_THREADS>>>(gridCellCount, dev_gridParticleCount, 0);
     
     // thrust::fill(thrust::device, dev_atomicCount, dev_atomicCount + gridCellCount, 0);
     // thrust::fill(thrust::device, dev_gridParticleCount, dev_gridParticleCount + gridCellCount, 0);
