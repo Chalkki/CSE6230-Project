@@ -1,0 +1,8 @@
+cd build
+salloc -N1 --mem-per-gpu=20G -t1:00:00 --gres=gpu:H100:1 --ntasks-per-node=1
+module purge
+module load cuda/12
+module load cmake
+module load gcc
+module load anaconda3/2022.05.0.1
+clear
