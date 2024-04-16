@@ -266,9 +266,9 @@ __global__ void kernUpdateVelNeighborCoherent(int N, int gridRes, Vec3 gridMin, 
     for(int delta_z = -1;  delta_z <= 1; delta_z++){
         for(int delta_y = -1;  delta_y <= 1; delta_y++){
             for(int delta_x = -1;  delta_x <= 1; delta_x++){
-                int neigh_id = gridtid3Dto1D(grid_c_int.x + delta_x,
-                                             grid_c_int.y + delta_y,
-                                             grid_c_int.z + delta_z, gridRes);
+                int x = grid_c_int.x + delta_x, y = grid_c_int.y + delta_y, z = grid_c_int.z + delta_z;
+                if (x < 0 || y < 0 || z < 0 || x >= gridRes || y >= gridRes || z >= gridRes) continue;
+                int neigh_id = gridtid3Dto1D(x, y, z, gridRes);
 
                 if(startIndex[neigh_id] == -1){
                     continue;
@@ -425,16 +425,17 @@ __global__ void kernUpdateVelNeighborCoherent_prefix(int N, int gridRes, Vec3 gr
     Vec3 perceived_center = Vec3();
     Vec3 c = Vec3();
     Vec3 perceived_velocity = Vec3();
-    
+
     unsigned int num_neighbors_r1 = 0;
     unsigned int num_neighbors_r3 = 0;
     
     for(int delta_z = -1;  delta_z <= 1; delta_z++){
         for(int delta_y = -1;  delta_y <= 1; delta_y++){
             for(int delta_x = -1;  delta_x <= 1; delta_x++){
-                int neigh_id = gridtid3Dto1D(grid_c_int.x + delta_x,
-                                             grid_c_int.y + delta_y,
-                                             grid_c_int.z + delta_z, gridRes);
+                int x = grid_c_int.x + delta_x, y = grid_c_int.y + delta_y, z = grid_c_int.z + delta_z;
+                if (x < 0 || y < 0 || z < 0 || x >= gridRes || y >= gridRes || z >= gridRes) continue;
+                int neigh_id = gridtid3Dto1D(x, y, z, gridRes);
+
 
                 for(int c_ind = startIndex[neigh_id]; c_ind <= endIndex[neigh_id]; c_ind++){
                     Vec3 pos_other = pos[c_ind];
@@ -501,7 +502,7 @@ void init_simulation(Vec3 * pos, int num_parts) {
     cudaMalloc((void**)&dev_vel2, num_parts * sizeof(Vec3));
 
     // computing grid params
-    gridCellWidth = 1.0f * perception_radius;
+    gridCellWidth = 2.0f * perception_radius;
 
     int halfSideCount = (int)(scale / gridCellWidth) + 1;
     gridSideCount = 2 * halfSideCount;
@@ -612,7 +613,9 @@ void stepSimulationScatteredGrid(Vec3 * pos, int num_parts) {
     dev_thrust_particleArrayIndices = thrust::device_ptr<int>(dev_particleArrayIndices);
     thrust::sort_by_key(dev_thrust_particleGridIndices, dev_thrust_particleGridIndices + num_parts, dev_thrust_particleArrayIndices);
 
-    thrust::fill(thrust::device, dev_gridCellStartIndices, dev_gridCellStartIndices + gridCellCount, -1);
+    bufferReset<<<block_per_grid, NUM_THREADS>>>(gridCellCount, dev_gridCellStartIndices, -1);
+    bufferReset<<<block_per_grid, NUM_THREADS>>>(gridCellCount, dev_gridCellEndIndices, -1);
+    // thrust::fill(thrust::device, dev_gridCellStartIndices, dev_gridCellStartIndices + gridCellCount, -1);
     identifyCellInfo<<<block_per_grid, NUM_THREADS>>> (num_parts, dev_particleGridIndices, dev_gridCellStartIndices, dev_gridCellEndIndices);
     
     kernUpdateVelocityScattered <<<block_per_grid, NUM_THREADS >>>(num_parts, gridSideCount, gridMinimum, gridInverseCellWidth, gridCellWidth, dev_gridCellStartIndices, dev_gridCellEndIndices, dev_particleArrayIndices, pos, dev_vel1, dev_vel2);
@@ -621,7 +624,6 @@ void stepSimulationScatteredGrid(Vec3 * pos, int num_parts) {
     Vec3* temp = dev_vel2;
     dev_vel2 = dev_vel1;
     dev_vel1 = temp;
-
 }
 
 // compute the particle block index and count number of particle within a given block
@@ -675,11 +677,15 @@ void stepSimulationCoherentGrid_prefix(Vec3 * pos, int num_parts) {
 }
 
 void stepSimulationScatteredGrid_prefix(Vec3 * pos, int num_parts) {
-    thrust::fill(thrust::device, dev_atomicCount, dev_atomicCount + gridCellCount, 0);
-    thrust::fill(thrust::device, dev_gridParticleCount, dev_gridParticleCount + gridCellCount, 0);
-
     dim3 block_per_grid((num_parts + NUM_THREADS - 1) / NUM_THREADS);
     dim3 block_per_cell((gridCellCount + NUM_THREADS - 1) / NUM_THREADS);
+
+    bufferReset<<<block_per_grid, NUM_THREADS>>>(gridCellCount, dev_atomicCount, 0);
+    bufferReset<<<block_per_grid, NUM_THREADS>>>(gridCellCount, dev_gridParticleCount, 0);
+    
+    // thrust::fill(thrust::device, dev_atomicCount, dev_atomicCount + gridCellCount, 0);
+    // thrust::fill(thrust::device, dev_gridParticleCount, dev_gridParticleCount + gridCellCount, 0);
+
     prefixCount <<<block_per_grid, NUM_THREADS>>>(num_parts, gridSideCount, gridMinimum, gridInverseCellWidth,pos, dev_gridParticleCount, dev_particleGridIndices);
 
     thrust::exclusive_scan(thrust::device, dev_gridParticleCount, dev_gridParticleCount + gridCellCount, dev_gridCellStartIndices);

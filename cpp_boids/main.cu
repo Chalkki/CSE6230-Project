@@ -86,7 +86,6 @@ void runCUDA(Vec3* pos, int num_parts, int i) {
   }
 }
 
-
 void save_boid_data( const Vec3* pos, int num_parts, const std::string& path) {
     happly::PLYData plyOut;
     std::vector<std::array<double, 3>> points;
