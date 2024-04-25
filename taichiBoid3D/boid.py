@@ -16,6 +16,7 @@ boundary_lines = 12
 
 particles_pos = ti.Vector.field(3, dtype=ti.f32, shape=N)
 particles_vel = ti.Vector.field(3, dtype=ti.f32, shape=N)
+
 line_starts = ti.Vector.field(3, dtype=ti.f32, shape=boundary_lines)
 line_ends = ti.Vector.field(3, dtype=ti.f32, shape=boundary_lines)
 
@@ -43,8 +44,8 @@ camera_move_speed = window_x / length_bound * 0.1
 @ti.kernel
 def init_particles():
     for i in range(N):
-        particles_pos[i] = ti.Vector([ti.random() * length_bound for _ in range(3)])
-        particles_vel[i] = ti.Vector([ti.random() * 2 - 1 for _ in range(3)]) * speed_limit
+        particles_pos[i] = ti.Vector([ti.random() * 100 for _ in range(3)])
+        particles_vel[i] = ti.Vector([ti.random() * 2 - 1 for _ in range(3)])
 
 
 # @ti.kernel
@@ -328,24 +329,47 @@ def find_flock_center(i):
 @ti.kernel
 def update_particles():
     for i in range(N):
-        center_offset = find_flock_center(i)
-        avoidance_offset = avoid_other_boids(i)
-        alignment_offset = align_velocity(i)
+        pos = particles_pos[i]
+        vel = particles_vel[i]
 
-        velocity = particles_vel[i] + center_offset + avoidance_offset + alignment_offset
-        velocity = limit_velocity(velocity)
+        # Compute interactions with other particles
+        center = ti.Vector.zero(ti.f32, 3)
+        avoid = ti.Vector.zero(ti.f32, 3)
+        align = ti.Vector.zero(ti.f32, 3)
+        num_neighbors = 0
 
-        particles_pos[i] += velocity * 0.1  # Assuming 0.1 as a time step equivalent
-        particles_vel[i] = velocity
+        for j in range(N):
+            if i != j:
+                disp = particles_pos[j] - pos
+                dist = disp.norm()
+                if dist < perception_radius:
+                    center += particles_pos[j]
+                    align += particles_vel[j]
+                    num_neighbors += 1
+                if dist < avoidance_radius:
+                    avoid -= disp.normalized() / dist  # Normalize to get unit vector
 
-        for j in ti.static(range(3)):
-            if particles_pos[i][j] < 0:
-                particles_pos[i][j] += length_bound
-            elif particles_pos[i][j] > length_bound:
-                particles_pos[i][j] -= length_bound
+        if num_neighbors > 0:
+            center = (center / num_neighbors - pos) * centering_factor
+            align = (align / num_neighbors - vel) * matching_factor
+        else:
+            center = ti.Vector.zero(ti.f32, 3)
+            align = ti.Vector.zero(ti.f32, 3)
 
-            # @ti.kernel
+        # Update velocity and position
+        new_vel = vel + center + avoid + align
+        new_vel = limit_velocity(new_vel)
+        new_pos = pos + new_vel * 0.1  # Time step is 0.1
 
+        # Periodic boundary conditions
+        for k in ti.static(range(3)):
+            if new_pos[k] < 0:
+                new_pos[k] += length_bound
+            elif new_pos[k] > length_bound:
+                new_pos[k] -= length_bound
+
+        particles_pos[i] = new_pos
+        particles_vel[i] = new_vel
 
 
 
@@ -397,11 +421,11 @@ while window.running:
     else:
         update_particles()
 
-    scene.ambient_light((0.5, 0.5, 0.5))
-    # scene.point_light(pos=(0, 10, -10), color=(1, 1, 1))
+    scene.ambient_light((1, 1, 1))  # Full white light to enhance color visibility
+    scene.point_light(pos=(0, 10, -10), color=(1, 1, 1))
 
     # Render particles
-    scene.particles(particles_pos, radius=0.1, color=(0.4, 0.6, 0.9))
+    scene.particles(particles_pos, radius=0.5, color=(0.01, 0.92, 0.01))
     scene.lines(box_anchors, indices=box_lines_indices, color=(0.99, 0.99, 0.01), width=2.0)
 
     canvas.scene(scene)
